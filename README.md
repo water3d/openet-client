@@ -75,8 +75,8 @@ and run `python setup.py install` to use the package, replacing
 `python` with the full path to your python interpreter, if necessary.
 
 ## Notes
-Lots of important things are missing from this project right now, including full documentation and better handling
-of exceptions, logging, edge cases, a setupfile, etc. It is mostly a demonstration case right now and also for internal use. Contributions welcome.
+Lots of important things are missing from this project right now, including full documentation (though functions are documented
+in the code), better handling of exceptions, logging, edge cases, etc. It is mostly a demonstration case right now and also for internal use. Contributions welcome.
 
 Future work could also consider using some async patterns to kick off raster exports, but then the user is still left polling
 for the file on their own. A better approach is probably still to follow the example above

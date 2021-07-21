@@ -9,7 +9,7 @@ except ImportError:
 
 if __name__ == "__main__":
     setuptools.setup(
-        name="OpenET Client",
+        name="openet_client",
         version=version,
         packages=setuptools.find_packages(exclude=("tests",)),
         description=None,

@@ -74,7 +74,11 @@ if my_raster.status == openet_client.raster.STATUS_AVAILABLE  # check that the r
 ```
 
 ## Installation
-The package currently isn't on the Python Package Index, so download the repository
+```shell
+python -m pip install openet-client
+```
+
+You may also download the repository
 and run `python setup.py install` to use the package, replacing
 `python` with the full path to your python interpreter, if necessary.
 

@@ -48,11 +48,33 @@ client.raster.export(arguments1)
 client.raster.export(arguments2)
 client.raster.wait_for_rasters()  # this will keep running until all rasters are downloaded - it will wait up to a day by default, but that's configurable by providing a `max_time` argument in seconds
 print(client.raster.downloaded_raster_paths)  # a list with all downloaded rasters
+# or
+rasters = client.raster.registry.values() # get all the Raster objects including remote URLs and local paths
+```
+
+### Doing work while you wait + manual control
+You might also not want to *wait* around for the rasters to export, but still have control over the process. Here's how
+to manually control the flow
+
+```python
+import openet
+client = openet.OpenETClient("your_open_et_token_value_here")
+arguments = {}  # some set of arguments, similar to the first example
+my_raster = client.raster.export(arguments)
+
+# ... any other code you like here - the OpenET API will do its work and make the raster ready - or not, depending on your place in their queue ...
+
+client.raster.check_statuses()  # check the API's all_files endpoint to see which rasters are ready
+if my_raster.status == openet.raster.STATUS_AVAILABLE  # check that the raster we want is now ready
+    client.raster.download_available_rasters()  # try to download the ones that are ready and not yet downloaded (from this session)
 ```
 
 ## Notes
 Lots of important things are missing from this project right now, including full documentation and better handling
 of exceptions, logging, edge cases, a setupfile, etc. It is mostly a demonstration case right now and also for internal use. Contributions welcome.
+
+Future work could also consider using some async patterns to kick off raster exports, but then the user is still left polling
+for the file on their own. A better approach is probably still to follow the example above
 
 ## Licensing
 This project is released under the MIT license.

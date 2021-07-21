@@ -19,6 +19,10 @@ STATUS_FAILED_CLIENT = 6
 
 
 class Raster(object):
+    """
+        Internal object for managing raster exports - tracks current status, the remote URL and the local file path once
+        it exists.
+    """
     def __init__(self, request_result):
         self.status = STATUS_NONE
         self.params = {}
@@ -35,6 +39,18 @@ class Raster(object):
             self.status = STATUS_SUBMITTED
 
     def download_file(self, retry_interval=20, max_wait=600):
+        """
+            Attempts to download a raster, assuming it's ready for download.
+            Will make multiple attempts over a few minutes because sometimes it takes a while for the permissions
+            to propagate, so the first few responses may give a 403 error. We then have a timeout (max_wait) where
+            if we exceed that value, we exit anyway without downloading.
+
+            Downloads the file to a tempfile path - the user may move the file after that if they
+            wish.
+        :param retry_interval: time in seconds between repeated attempts
+        :param max_wait: How long, in seconds should we wait for the correct permissions before stopping attempts to download.
+        :return:
+        """
         # adapted from https://stackoverflow.com/a/39217788/587938
         local_filename = self.remote_url.split('/')[-1]
         local_file_path = tempfile.mktemp(local_filename)
@@ -60,15 +76,43 @@ class Raster(object):
                     time.sleep(retry_interval)
                     wait_time += retry_interval
 
-class RasterManager(object):
-    client = None
 
-    def __init__(self, client, wait_time=30):
+class RasterManager(object):
+    """
+        The manager that becomes the .raster attribute on the OpenETClient object.
+        Handles submitting raster export requests and polling for completed exports.
+
+        As constructed, could slow down if it handles many thousands of raster exports, or
+        if the all_files OpenET endpoint displays lots of files as options.
+
+        Generally speaking, you won't create this object yourself, but you can set
+        client.raster.wait_interval to the length of time, in seconds, that the manager
+        should wait between polling the all_files endpoint for new exports when waiting for new
+        rasters.
+    """
+
+    client = None
+    wait_interval = 30
+
+    def __init__(self, client):
         self.client = client
         self.registry = {}
-        self._wait_interval = wait_time
 
     def export(self, params=None, synchronous=False, public=True):
+        """
+            Handles the raster/export endpoint for OpenET.
+        :param params: A dictionary of arguments with keys matching the raster/export endpoints parameters
+                        and values matching the requirements for the values of those keys
+        :param synchronous: Whether or not to wait for the raster to export and be downloaded before
+                            exiting this function and proceeding
+        :param public:  Whether or not to make the raster public - at this point, keeping this as True is
+                        required for all the features of this package to work, but if you just want to use the
+                        package to submit a bunch of raster jobs, but not to *download* those rasters, then
+                        you may set this to False.
+        :return: Raster object - when synchronous, the local_file attribute will
+                        have the path to the downloaded raster on disk - otherwise it
+                        will have the status of the raster
+        """
         endpoint = "raster/export"
         params = {} if params is None else params
 
@@ -88,6 +132,8 @@ class RasterManager(object):
         if synchronous:
             self.wait_for_rasters(raster.uuid)
 
+        return raster
+
     @property
     def queued_rasters(self):
         """
@@ -99,6 +145,10 @@ class RasterManager(object):
 
     @property
     def available_rasters(self):
+        """
+            Which rasters have we marked as ready to download, but haven't yet been retrieved?
+        :return:
+        """
         return [raster for raster in self.registry.values() if raster.status == STATUS_AVAILABLE]
 
     @property
@@ -106,6 +156,10 @@ class RasterManager(object):
         return [raster.local_file for raster in self.registry.values() if raster.status == STATUS_DOWNLOADED]
 
     def download_available_rasters(self):
+        """
+            Attempts to download all available rasters individually
+        :return:
+        """
         rasters = self.available_rasters
 
         for raster in rasters:
@@ -113,13 +167,16 @@ class RasterManager(object):
 
     def wait_for_rasters(self, uuid=None, max_time=86400):
         """
+            When we want to just wait until the rasters are ready, we call this method, which polls
+            the all_files endpoint at set intervals and checks which rasters are done.
 
+            Then updates the statuses on individual rasters and calls the download functions
+            for the individual rasters and time some are ready to download, but won't exit until
+            all rasters are available and have had at least one download attempt.
         :param uuid:
         :param max_time: Maximum time in seconds to wait for all rasters to complete - defaults to 86400 (a day)
         :return:
         """
-
-        endpoint = "raster/export/all_files"
 
         if uuid is None:
             rasters = self.queued_rasters
@@ -128,15 +185,28 @@ class RasterManager(object):
 
         wait_time = 0
         while len(rasters) > 0 and wait_time < max_time:
-            time.sleep(self._wait_interval)
-            wait_time += self._wait_interval  # we'll have some error in this approach because we won't account for the time we spend processing things. We could just check how long it's been since we started waiting too
+            time.sleep(self.wait_interval)
+            wait_time += self.wait_interval  # we'll have some error in this approach because we won't account for the time we spend processing things. We could just check how long it's been since we started waiting too
 
-            results = self.client.send_request(endpoint)
-
-            for raster in rasters:
-                if raster.remote_url in results.json()["rasters"]:
-                    raster.status = STATUS_AVAILABLE
+            self.check_statuses(rasters)
 
             self.download_available_rasters()
             rasters = [raster for raster in rasters if raster.status < STATUS_AVAILABLE]
+
+    def check_statuses(self, rasters=None):
+        """
+            Updates the status information on each raster only - does not attempt to download them.
+        :param rasters: the list of rasters to update the status of - if not provided, defaults to all rasters that
+                        are queued and not downloaded
+        :return: None
+        """
+        endpoint = "raster/export/all_files"
+
+        if rasters is None:
+            rasters = self.queued_rasters
+
+        results = self.client.send_request(endpoint)
+        for raster in rasters:
+            if raster.remote_url in results.json()["rasters"]:
+                raster.status = STATUS_AVAILABLE
 

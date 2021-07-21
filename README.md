@@ -69,6 +69,11 @@ if my_raster.status == openet.raster.STATUS_AVAILABLE  # check that the raster w
     client.raster.download_available_rasters()  # try to download the ones that are ready and not yet downloaded (from this session)
 ```
 
+## Installation
+The package currently isn't on the Python Package Index, so download the repository
+and run `python setup.py install` to use the package, replacing
+`python` with the full path to your python interpreter, if necessary.
+
 ## Notes
 Lots of important things are missing from this project right now, including full documentation and better handling
 of exceptions, logging, edge cases, a setupfile, etc. It is mostly a demonstration case right now and also for internal use. Contributions welcome.

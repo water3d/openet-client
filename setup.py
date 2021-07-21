@@ -2,14 +2,14 @@ import setuptools
 import datetime
 
 try:
-    from openet import __version__ as version, __author__ as author
+    from openet_client import __version__ as version, __author__ as author
 except ImportError:
     version = datetime.datetime.utcnow().strftime("%Y.%m.%d")
     author = "nickrsan"
 
 if __name__ == "__main__":
     setuptools.setup(
-        name="OpenET",
+        name="OpenET Client",
         version=version,
         packages=setuptools.find_packages(exclude=("tests",)),
         description=None,

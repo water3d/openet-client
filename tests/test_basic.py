@@ -2,7 +2,7 @@ import pytest
 
 import os
 
-import openet
+import openet_client
 
 raster_params = {
     'start_date': '2016-01-01',
@@ -16,7 +16,7 @@ raster_params = {
 
 
 def test_basic():
-    client = openet.OpenETClient()
+    client = openet_client.OpenETClient()
     client.token = os.environ["OPENET_TOKEN"]
     client.raster.export(params=raster_params, synchronous=True)
     print(client.raster.downloaded_raster_paths)

@@ -121,6 +121,15 @@ class RasterManager(object):
         elif "filename_suffix" not in params and public is True:
             params["filename_suffix"] = "_public"
 
+        # consider adding a geometry check here, such as
+        #
+        # if hasattr(params["geometry"], "transform") and hasattr(params["geometry"], "coords"):
+        #   params["geometry"] = str(p.boundary.transform(4326, clone=True).coords).replace("(", "").replace(")", "").replace(" ", "")[:-1]
+        #
+        # it checks if we have the ability to reproject the geometry data passed in and if we can get a coordinate string from it,
+        # such as from OGR and GEOS objects in GeoDjango. If it has those abilities, then it attempts to reproject, get the coordinates, and then
+        # stringifies them and removes parens, spaces, and the trailing comma.
+
         result = self.client.send_request(endpoint, **params)
 
         if result.status_code not in (200, 201, 301):

@@ -98,17 +98,29 @@ class RasterManager(object):
         self.client = client
         self.registry = {}
 
-    def export(self, params=None, synchronous=False, public=True):
+    def export(self, params=None, synchronous=False, public=True, transform=False):
         """
-            Handles the raster/export endpoint for OpenET.
+            Handles the raster/export endpoint for OpenET. Optionally waits for the raster to be exported
+            and downloaded before proceeding. See documentation examples for usage details.
+
         :param params: A dictionary of arguments with keys matching the raster/export endpoints parameters
-                        and values matching the requirements for the values of those keys
+                        and values matching the requirements for the values of those keys. If the "geometry"
+                        key of this value is a GEOS or an OGR object with a .coords attribute, then
+                        the correct geometry string to send to the API will be composed for you. Otherwise,
+                        it is your responsibility to match the values with the API's requirements.
         :param synchronous: Whether or not to wait for the raster to export and be downloaded before
                             exiting this function and proceeding
         :param public:  Whether or not to make the raster public - at this point, keeping this as True is
                         required for all the features of this package to work, but if you just want to use the
                         package to submit a bunch of raster jobs, but not to *download* those rasters, then
                         you may set this to False.
+        :param transform: If a GEOS or OGR object with :code:`transform` and :code:`coords` attributes is passed in as part
+                        of params["geography"],
+                        such as an object from GeoDjango, then you can optionally specify that this function
+                        handle a simple transformation to WGS84 (EPSG 4326) for you. For more complicated transformations
+                        or datum transformations, it may be best to handle the transformation before running this function.
+                        Setting it to False doesn't control usage of a GEOS/OGR object is used, only if its coordinates
+                        are transformed first.
         :return: Raster object - when synchronous, the local_file attribute will
                         have the path to the downloaded raster on disk - otherwise it
                         will have the status of the raster
@@ -121,10 +133,12 @@ class RasterManager(object):
         elif "filename_suffix" not in params and public is True:
             params["filename_suffix"] = "_public"
 
-        # consider adding a geometry check here, such as
-        #
-        # if hasattr(params["geometry"], "transform") and hasattr(params["geometry"], "coords"):
-        #   params["geometry"] = str(p.boundary.transform(4326, clone=True).coords).replace("(", "").replace(")", "").replace(" ", "")[:-1]
+        # check that if they passed in an object for the geometry, see if we can get the correct coordinate strings.
+        if hasattr(params["geometry"], "transform") and hasattr(params["geometry"], "coords"):
+            geom = params["geometry"]
+            if transform:
+                geom = geom.transform(4326, clone=True)
+            params["geometry"] = str(geom.coords).replace("(", "").replace(")", "").replace(" ", "")[:-1]
         #
         # it checks if we have the ability to reproject the geometry data passed in and if we can get a coordinate string from it,
         # such as from OGR and GEOS objects in GeoDjango. If it has those abilities, then it attempts to reproject, get the coordinates, and then
@@ -132,7 +146,7 @@ class RasterManager(object):
 
         result = self.client.send_request(endpoint, **params)
 
-        if result.status_code not in (200, 201, 301):
+        if result.status_code not in (200, 201, 301) or "ERROR" in result.json():
             raise BadRequestError(f"OpenET API returned status code {result.status_code} with reason {result.reason} and message {result.text}")
 
         raster = Raster(result.json())

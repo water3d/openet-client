@@ -6,6 +6,7 @@ logging.basicConfig()
 
 from . import raster
 from .raster import RasterManager
+from .geodatabase import Geodatabase
 from .exceptions import AuthenticationError
 
 
@@ -17,6 +18,7 @@ class OpenETClient(object):
     def __init__(self, token=None):
         self.token = token
         self.raster = RasterManager(client=self)
+        self.geodatabase = Geodatabase(client=self)
 
     def _check_token(self):
         if self.token is None:

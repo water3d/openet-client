@@ -6,6 +6,7 @@ logging.basicConfig()
 
 from . import raster
 from .raster import RasterManager
+from .geodatabase import Geodatabase
 from .exceptions import AuthenticationError
 
 
@@ -17,12 +18,13 @@ class OpenETClient(object):
     def __init__(self, token=None):
         self.token = token
         self.raster = RasterManager(client=self)
+        self.geodatabase = Geodatabase(client=self)
 
     def _check_token(self):
         if self.token is None:
             raise AuthenticationError("Token missing/undefined - you must set the value of your token before proceeding")
 
-    def send_request(self, endpoint, method="get", **kwargs):
+    def send_request(self, endpoint, method="get", disable_encoding=False, **kwargs):
         """
             Handles sending most requests to the API - they provide the endpoint and the args.
             Since the API is in the process of switching from GET to POST requests, we have logic that switches between
@@ -36,13 +38,15 @@ class OpenETClient(object):
         self._check_token()
 
         requester = getattr(requests, method)
-        send_kwargs = {}
-        if method == "get":
-            send_kwargs["params"] = kwargs
-            send_kwargs["data"] = None
-        elif method == "post":
-            send_kwargs["data"] = kwargs
-            send_kwargs["params"] = None
+        send_kwargs = kwargs
+        # they're not currently switching between post args and get args - it's just a get request that we POST instead...
+        # send_kwargs = {}
+        #if method == "get":
+        #    send_kwargs["params"] = kwargs
+        #    send_kwargs["data"] = None
+        #elif method == "post":
+        #    send_kwargs["data"] = kwargs
+        #    send_kwargs["params"] = None
 
         url = self._base_url + endpoint
         logging.info(f"Connecting to {url}")
@@ -53,5 +57,8 @@ class OpenETClient(object):
         if self._validate_ssl != True:
             extra_kwargs['verify'] = False
 
-        result = requester(url, headers={"Authorization": self.token}, params=send_kwargs["params"], data=send_kwargs["data"], **extra_kwargs)
+        if disable_encoding:  # the API doesn't always like certain things URL-encoded, so don't
+            send_kwargs = "&".join("%s=%s" % (k, v) for k, v in send_kwargs.items())
+
+        result = requester(url, headers={"Authorization": self.token}, params=send_kwargs, **extra_kwargs)
         return result

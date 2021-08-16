@@ -20,3 +20,5 @@ def test_basic():
     client.token = os.environ["OPENET_TOKEN"]
     client.raster.export(params=raster_params, synchronous=True)
     print(client.raster.downloaded_raster_paths)
+
+

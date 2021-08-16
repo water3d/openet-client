@@ -1,8 +1,16 @@
 import tempfile
 import time
+import logging
 from collections import OrderedDict
 
-import geopandas
+try:
+	import fiona  # try importing fiona directly, because otherwise geopandas defers errors to later on when it actually needs to use it
+	import geopandas
+	GEOPANDAS_AVAILABLE = True
+except ImportError:
+	GEOPANDAS_AVAILABLE = False
+	logging.warning("Can't load fiona or geopandas - will not be able to undertake spatial operations")
+
 import pandas
 
 MAX_FEATURE_IDS_LIST_LENGTH = 100
@@ -29,7 +37,7 @@ class Geodatabase(object):
 	def __init__(self, client):
 		self.client = client
 
-	def get_et_for_features(self, params, features, feature_type, id_field, output_field, geometry_field="geometry", endpoint="features/stats/annual"):
+	def get_et_for_features(self, params, features, feature_type, id_field, output_field, geometry_field="geometry", endpoint="timeseries/features/stats/annual"):
 		"""
 			Takes one of multiple data formats (user specified, we're not inspecting it - options are
 			geopandas, geojson) and gets its
@@ -41,6 +49,11 @@ class Geodatabase(object):
 		:return:
 		"""
 
+		if GEOPANDAS_AVAILABLE is False:
+			# we'll check it this way because that way we can let people who don't want to get a working fiona/geopandas environment
+			# use the application without it confusingly failing on them at runtime.
+			raise EnvironmentError("Fiona or Geopandas is unavailable - check that Fiona and Geopandas are both installed and that importing Fiona works - cannot proceed without a working installation with fiona and geopandas")
+
 		if endpoint.startswith("timeseries/"):  # strip it off the front if they included it
 			endpoint.replace("timeseries/", "")
 
@@ -51,7 +64,17 @@ class Geodatabase(object):
 			features = geopandas.GeoDataFrame.from_features(features)
 
 		features_wgs = features.to_crs(4326)
-		features_wgs["centroid",] = features_wgs.geometry.centroid
+		features_wgs.loc[:, "centroid_geom"] = features_wgs["geometry"].centroid
+		def set_centroid(row):
+			"""
+				There's a better way to do this, but my Pandas-fu is failing me right now.
+				Make a function to set the centroid as text elementwise
+			:param row:
+			:return:
+			"""
+			row["centroid"] = f'{row["centroid_geom"].x} {row["centroid_geom"].y}'
+			return row
+		features_wgs = features_wgs.apply(set_centroid, axis=1)
 
 		# we're going to have to get the feature IDs one by one if we want a reliable mapping of polygons to openET features
 		# which isn't ideal and we'll want to rate limit it to make sure we don't abuse the API too heavily
@@ -59,17 +82,34 @@ class Geodatabase(object):
 		# we don't have to go back and get it again if we already got it.
 
 		openet_feature_ids = self.get_feature_ids(features_wgs, field="centroid")
-		temp_feature_outputs = tempfile.mktemp(suffix=".csv", prefix="openet_client")
-		openet_feature_ids.to_csv(temp_feature_outputsmet)
+		#temp_feature_outputs = tempfile.mktemp(suffix=".csv", prefix="openet_client")
+		#openet_feature_ids.to_csv(temp_feature_outputs)
 
-		#df_length = len(features_wgs)
-		#start = 0
-		#end = min(MAX_FEATURE_IDS_LIST_LENGTH, df_length)
-		#while start < df_length:
-		#	partial_df = features_wgs[start:end, ]
-		#	start += MAX_FEATURE_IDS_LIST_LENGTH
-		#	end += MAX_FEATURE_IDS_LIST_LENGTH
-		#	end = min(MAX_FEATURE_IDS_LIST_LENGTH, df_length)  # we'll only check end because we won't enter the next iteration if start < df_length
+		features_wgs = features_wgs.merge(openet_feature_ids, on="centroid")
+		feature_ids = openet_feature_ids["openet_feature_id"].tolist()
+
+		df_length = len(feature_ids)
+		start = 0
+		end = min(MAX_FEATURE_IDS_LIST_LENGTH, df_length)
+		results = []
+		while start < df_length:
+			partial_list = feature_ids[start:end]
+			params["field_ids"] = str(partial_list).replace(" ", "").replace("\'", '"')  # what's weird is we basically have to send this as a python list, so we need to stringify it first so requests doesn't process it
+			response = self.client.send_request(endpoint, method="post", disable_encoding=True, **params)
+			results.extend(response.json())
+
+			start += MAX_FEATURE_IDS_LIST_LENGTH
+			end += MAX_FEATURE_IDS_LIST_LENGTH
+			end = min(MAX_FEATURE_IDS_LIST_LENGTH, df_length)  # we'll only check end because we won't enter the next iteration if start < df_length
+
+		openet_output_field_name = "data_value" if "aggregation" not in params else params["aggregation"]
+
+		results_reformed = [{output_field: item[openet_output_field_name], "openet_feature_id": item["feature_unique_id"]}
+						for item in results]
+		results_df = pandas.DataFrame(results_reformed)
+
+		final = features_wgs.merge(results_df, on="openet_feature_id")
+		return final
 
 	def get_feature_ids(self, features, field=None, wait_time=RATE_LIMIT):
 		"""
@@ -86,7 +126,7 @@ class Geodatabase(object):
 			raise ValueError("A field name was provided, but `features` are not a Pandas DataFrame. Must be a DataFrame to proceed, or a field name should not be provided")
 
 		if field:
-			inputs = features[field,]
+			inputs = features[field]
 		else:
 			inputs = features
 
@@ -103,11 +143,15 @@ class Geodatabase(object):
 			time.sleep(wait_time/1000)
 
 		if field:
-			return pandas.DataFrame({field: outputs.keys(), "openet_feature_id": outputs.values()})
+			out_df = pandas.DataFrame({field: outputs.keys(), "openet_feature_id": outputs.values()})
+			out_df.set_index(keys=field)
+			return out_df
 		else:
 			return outputs
 
 	def feature_ids_list(self, params=None):
 		endpoint = "metadata/openet/region_of_interest/feature_ids_list"
-		results = self.client.send_request(endpoint, params, method="post")
+		if params is None:
+			params = {}
+		results = self.client.send_request(endpoint, method="post", **params)
 		return results

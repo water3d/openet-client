@@ -14,7 +14,7 @@ except ImportError:
 import pandas
 
 MAX_FEATURE_IDS_LIST_LENGTH = 100
-RATE_LIMIT = 250  # ms
+RATE_LIMIT = 5000  # ms
 
 FEATURE_TYPE_GEOPANDAS = "geopandas"
 FEATURE_TYPE_GEOJSON = "geojson"
@@ -37,7 +37,7 @@ class Geodatabase(object):
 	def __init__(self, client):
 		self.client = client
 
-	def get_et_for_features(self, params, features, feature_type, id_field, output_field, geometry_field="geometry", endpoint="timeseries/features/stats/annual"):
+	def get_et_for_features(self, params, features, feature_type, id_field, output_field, geometry_field="geometry", endpoint="timeseries/features/stats/annual", wait_time=RATE_LIMIT):
 		"""
 			Takes one of multiple data formats (user specified, we're not inspecting it - options are
 			geopandas, geojson) and gets its
@@ -72,9 +72,11 @@ class Geodatabase(object):
 			:param row:
 			:return:
 			"""
-			row["centroid"] = f'{row["centroid_geom"].x} {row["centroid_geom"].y}'
+			# get the values as a string, but truncate it to 7 places for precision so that we can more reliably cache it
+			row["centroid"] = f'{round(row["centroid_geom"].x, 7)} {round(row["centroid_geom"].y, 7)}'
 			return row
 		features_wgs = features_wgs.apply(set_centroid, axis=1)
+		features_wgs = features_wgs.drop(columns=["centroid_geom"])  # drop it so it doesn't create output problems later
 
 		# we're going to have to get the feature IDs one by one if we want a reliable mapping of polygons to openET features
 		# which isn't ideal and we'll want to rate limit it to make sure we don't abuse the API too heavily
@@ -93,10 +95,12 @@ class Geodatabase(object):
 		end = min(MAX_FEATURE_IDS_LIST_LENGTH, df_length)
 		results = []
 		while start < df_length:
-			partial_list = feature_ids[start:end]
+			partial_list = [feat for feat in feature_ids[start:end] if feat is not None]  # remove the null values and filter to the batch size
 			params["field_ids"] = str(partial_list).replace(" ", "").replace("\'", '"')  # what's weird is we basically have to send this as a python list, so we need to stringify it first so requests doesn't process it
 			response = self.client.send_request(endpoint, method="post", disable_encoding=True, **params)
 			results.extend(response.json())
+
+			time.sleep(wait_time / 1000)
 
 			start += MAX_FEATURE_IDS_LIST_LENGTH
 			end += MAX_FEATURE_IDS_LIST_LENGTH
@@ -132,15 +136,30 @@ class Geodatabase(object):
 
 		outputs = OrderedDict()
 		for item in inputs:
-			params = {"coordinates": item, "spatial_join_type": "intersect", "override": "False"}
-			results = self.feature_ids_list(params)
-			ids = results.json()["feature_unique_ids"]
-			if len(ids) > 0:
-				outputs[item] = ids[0]
-			else:
-				outputs[item] = None
+			# check the cache first - we might not need an API request for their field ID
+			cached_value = self.client.cache.check_gdb_cache(key=item)
+			if cached_value is False:  # False indicates no records, None indicates it's there and Null
+				params = {"coordinates": item, "spatial_join_type": "intersect", "override": "False"}
+				results = self.feature_ids_list(params)
+				results_dict = results.json()
+				if "feature_unique_ids" in results_dict:
+					ids = results_dict["feature_unique_ids"]
+				else:
+					logging.error(f"Unable to retrieve field ID. Server returned {results_dict}")
+					raise ValueError(f"Unable to retrieve field ID. Server returned {results_dict}")
 
-			time.sleep(wait_time/1000)
+				if len(ids) > 0:
+					outputs[item] = ids[0]
+				else:
+					outputs[item] = None
+
+				# save the returned value in our cache so we don't make another roundtrip if we run these
+				# same values through in the future
+				self.client.cache.cache_gdb_item(key=item, value=outputs[item])
+				time.sleep(wait_time / 1000)
+			else:
+				outputs[item] = cached_value
+				# no need to sleep when we check out own cache!
 
 		if field:
 			out_df = pandas.DataFrame({field: outputs.keys(), "openet_feature_id": outputs.values()})
@@ -150,6 +169,12 @@ class Geodatabase(object):
 			return outputs
 
 	def feature_ids_list(self, params=None):
+		"""
+			The base OpenET Method - sends the supplied params to metadata/openet/region_of_interest/feature_ids_list
+			and returns the requests.Response object
+		:param params:
+		:return:
+		"""
 		endpoint = "metadata/openet/region_of_interest/feature_ids_list"
 		if params is None:
 			params = {}

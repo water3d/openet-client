@@ -7,7 +7,8 @@ logging.basicConfig()
 from . import raster
 from .raster import RasterManager
 from .geodatabase import Geodatabase
-from .exceptions import AuthenticationError
+from .exceptions import AuthenticationError, RateLimitError
+from .cache import Cacher
 
 
 class OpenETClient(object):
@@ -19,6 +20,7 @@ class OpenETClient(object):
         self.token = token
         self.raster = RasterManager(client=self)
         self.geodatabase = Geodatabase(client=self)
+        self.cache = Cacher()
 
     def _check_token(self):
         if self.token is None:
@@ -61,4 +63,8 @@ class OpenETClient(object):
             send_kwargs = "&".join("%s=%s" % (k, v) for k, v in send_kwargs.items())
 
         result = requester(url, headers={"Authorization": self.token}, params=send_kwargs, **extra_kwargs)
+
+        if result.status_code == 500 and "reached your maximum rate limit" in result.json()["description"]:
+            raise RateLimitError("Server indicates we've reached our rate limit - try increasing the wait time between requests")
+
         return result

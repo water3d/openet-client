@@ -1,10 +1,21 @@
 # OpenET Python Client
 
-A Python library for accessing OpenET data
+A Python library for accessing OpenET data with support functions to enable quicker workflows.
 
-Currently just provides access to the raster export and download endpoints.
+Contents:
+* [Examples](#examples)
+    * [Raster API](#raster-api)
+        * [Batching It](#batching-it)
+        * [Doing work while you wait](#doing-work-while-you-wait--manual-control)
+    * [Geodatabase API](#geodatabase-api)
+* [Installation](#installation)
+* [Notes](#notes)
+* [Licensing](#licensing)
 
 ## Examples
+Full documentation forthcoming in the future.
+
+### Raster API
 One common need is issuing a raster export command and then waiting to proceed until the
 image is available and downloaded to the current machine. To do that:
 
@@ -36,7 +47,7 @@ print(
     client.raster.downloaded_raster_paths)  # get the paths to the downloaded rasters (will be a list, even for a single raster)
 ```
 
-### Batching it
+#### Batching it
 You may also want to queue up multiple rasters, then wait to download them all. To do that,
 run the `raster.export` commands with `synchronous=False` (the default), then
 issue a call to `wait_for_rasters`
@@ -55,7 +66,7 @@ print(client.raster.downloaded_raster_paths)  # a list with all downloaded raste
 rasters = client.raster.registry.values()  # get all the Raster objects including remote URLs and local paths
 ```
 
-### Doing work while you wait + manual control
+#### Doing work while you wait + manual control
 You might also not want to *wait* around for the rasters to export, but still have control over the process. Here's how
 to manually control the flow
 
@@ -73,10 +84,59 @@ if my_raster.status == openet_client.raster.STATUS_AVAILABLE  # check that the r
     client.raster.download_available_rasters()  # try to download the ones that are ready and not yet downloaded (from this session)
 ```
 
+### Geodatabase API
+The geodatabase API is supported, including functions that allow pulling ET data for spatial objects.
+```python
+import os
+import geopandas
+import openet_client
+
+features = "PATH TO YOUR SPATIAL DATA" # must be a format geopandas supports, which is most spatial data
+df = geopandas.read_file(features)
+
+client = openet_client.OpenETClient()
+client.token = os.environ["OPENET_TOKEN"]
+result = client.geodatabase.get_et_for_features(params={
+        "aggregation": "mean",
+        "feature_collection_name": "CA",
+        "model": "ensemble_mean",
+        "variable": "et",
+        "start_date": 2018,
+        "end_date": 2018
+    },
+    features=df,
+    feature_type=openet_client.geodatabase.FEATURE_TYPE_GEOPANDAS,
+    id_field="UniqueID",
+    output_field="et_2018_mean_ensemble_mean",
+    endpoint="timeseries/features/stats/annual"
+)
+```
+
+More documentation for this portion of the API will be forthcoming, but note that, like the raster API, you provide a set of
+parameters that will be sent directly to OpenET based on the endpoint. The function `get_et_for_features` takes many additional
+parameters that indicate what kind of data you're providing as an input, in this case a geopandas data frame.
+You also can provide different geodatabase feature endpoints.
+
+This function then calculates the centroid of each feature, finds the fields in OpenET that are associated with those centroids,
+then downloads the ET data for those fields based on the `params` you provide. It attaches the ET
+to a data frame as a new field with the name specified in `output_field`. Note that for large features, it does not currently
+retrieve ET for multiple fields and aggregate them to the larger area. For that functionality, use the raster functionality.
+
+This function also caches the field IDs for the features to avoid future lookups that use API quota. Rerunning the
+same features with different params will run significantly faster and use significantly fewer API requests behind the scenes.
+
+Lower level access is also available, such as simple wrappers of API functions. Documentation to come.
+
 ## Installation
 ```shell
 python -m pip install openet-client
 ```
+
+If you want support for spatial operations that help with wrapping the geodatabase API, also run
+```shell
+python -m pip install openet-client[spatial]
+```
+This will attempt to install `geopandas` and `fiona`, which are required for spatial processing. These packages may have trouble (especially on Windows) due to external dependencies. We recommend using a conda environment and the conda packages to simplify that install. In that case, simply use conda to install geopandas to install the necessary dependencies instead of running the above command.
 
 You may also download the repository
 and run `python setup.py install` to use the package, replacing

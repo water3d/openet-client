@@ -3,6 +3,8 @@ import time
 import logging
 from collections import OrderedDict
 
+from .exceptions import RateLimitError
+
 try:
 	import fiona  # try importing fiona directly, because otherwise geopandas defers errors to later on when it actually needs to use it
 	import geopandas
@@ -13,7 +15,7 @@ except ImportError:
 
 import pandas
 
-MAX_FEATURE_IDS_LIST_LENGTH = 100
+MAX_FEATURE_IDS_LIST_LENGTH = 50
 RATE_LIMIT = 5000  # ms
 
 FEATURE_TYPE_GEOPANDAS = "geopandas"
@@ -37,7 +39,16 @@ class Geodatabase(object):
 	def __init__(self, client):
 		self.client = client
 
-	def get_et_for_features(self, params, features, feature_type, id_field, output_field, geometry_field="geometry", endpoint="timeseries/features/stats/annual", wait_time=RATE_LIMIT):
+	def get_et_for_features(self,
+							params,
+							features,
+							feature_type,
+							id_field,
+							output_field,
+							geometry_field="geometry",
+							endpoint="timeseries/features/stats/annual",
+							wait_time=RATE_LIMIT,
+							batch_size=MAX_FEATURE_IDS_LIST_LENGTH):
 		"""
 			Takes one of multiple data formats (user specified, we're not inspecting it - options are
 			geopandas, geojson) and gets its
@@ -92,27 +103,51 @@ class Geodatabase(object):
 
 		df_length = len(feature_ids)
 		start = 0
-		end = min(MAX_FEATURE_IDS_LIST_LENGTH, df_length)
+		end = min(batch_size, df_length)
 		results = []
+
+		original_batch_size = batch_size
+		slow_batch_count = 0
 		while start < df_length:
 			partial_list = [feat for feat in feature_ids[start:end] if feat is not None]  # remove the null values and filter to the batch size
 			params["field_ids"] = str(partial_list).replace(" ", "").replace("\'", '"')  # what's weird is we basically have to send this as a python list, so we need to stringify it first so requests doesn't process it
-			response = self.client.send_request(endpoint, method="post", disable_encoding=True, **params)
-			results.extend(response.json())
+
+			try:
+				response = self.client.send_request(endpoint, method="post", disable_encoding=True, **params)
+			except RateLimitError as e:
+				# if it gets interrupted save the data we currently have to the exception then raise it up
+				raise RateLimitError(str(e) + ". The retrieved data is available as an attribute '.data' on this exception, but is incomplete.", data=self._process_results(results, output_field, params, features_wgs))
+
+			if not response.status_code == 500:
+				results.extend(response.json())
+			else:
+				logging.warning(f"Error retrieving ET for one or more fields. Request sent was {response.url}. Got response {response.text}")
+				if batch_size != original_batch_size:  # if we're not already there, switch to slow batch mode so we go through it one by one now
+					batch_size = 1
+					end = start + 1
+					continue  # go back through the last batch one by one so we make sure we get as many as possible
 
 			time.sleep(wait_time / 1000)
 
-			start += MAX_FEATURE_IDS_LIST_LENGTH
-			end += MAX_FEATURE_IDS_LIST_LENGTH
-			end = min(MAX_FEATURE_IDS_LIST_LENGTH, df_length)  # we'll only check end because we won't enter the next iteration if start < df_length
+			if batch_size != original_batch_size:  # if we're in slow batch mode
+				slow_batch_count += 1  # count how many we've done
+				if slow_batch_count == original_batch_size:  # until we get back to where we would have been in the first place
+					batch_size = original_batch_size  # then increase the batch size again to *try* to get a larger set for the next group
 
+			start += batch_size
+			end += batch_size
+			end = min(end, df_length)  # we'll only check end because we won't enter the next iteration if start < df_length
+
+		return self._process_results(results, output_field, params, features_wgs)
+
+	def _process_results(self, results, output_field, params, features_wgs):
 		openet_output_field_name = "data_value" if "aggregation" not in params else params["aggregation"]
 
 		results_reformed = [{output_field: item[openet_output_field_name], "openet_feature_id": item["feature_unique_id"]}
 						for item in results]
 		results_df = pandas.DataFrame(results_reformed)
 
-		final = features_wgs.merge(results_df, on="openet_feature_id")
+		final = features_wgs.merge(results_df, on="openet_feature_id", how="outer")
 		return final
 
 	def get_feature_ids(self, features, field=None, wait_time=RATE_LIMIT):

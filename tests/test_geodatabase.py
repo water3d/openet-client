@@ -15,14 +15,20 @@ def test_simple_feature_retrieval(features=os.path.join(TEST_DATA, "vw_landiq.ge
 
 	client = openet_client.OpenETClient()
 	client.token = os.environ["OPENET_TOKEN"]
-	result = client.geodatabase.get_et_for_features(params={
-		"aggregation": "mean",
-		"feature_collection_name": "CA",
-		"model": "ensemble_mean",
-		"variable": "et_2018_ensemble_mean_mean",
-		"start_date": 2018,
-		"end_date": 2018
-	}, features=df, feature_type=openet_client.geodatabase.FEATURE_TYPE_GEOPANDAS, id_field="UniqueID", output_field="et")
+	result = client.geodatabase.get_et_for_features(
+		params={
+			"aggregation": "mean",
+			"feature_collection_name": "CA",
+			"model": "ensemble_mean",
+			"variable": "et",
+			"start_date": 2018,
+			"end_date": 2018
+		},
+		features=df,
+		feature_type=openet_client.geodatabase.FEATURE_TYPE_GEOPANDAS,
+		id_field="UniqueID",
+		output_field="et_2018_ensemble_mean_mean"
+	)
 
 	result.to_file(os.path.join(TEST_DATA, "results.gpkg"), layer='et_vw_results', driver="GPKG")
 	print(result)

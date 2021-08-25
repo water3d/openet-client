@@ -43,12 +43,13 @@ class Geodatabase(object):
 							params,
 							features,
 							feature_type,
-							id_field,
-							output_field,
+							output_field=None,
 							geometry_field="geometry",
 							endpoint="timeseries/features/stats/annual",
 							wait_time=RATE_LIMIT,
-							batch_size=MAX_FEATURE_IDS_LIST_LENGTH):
+							batch_size=MAX_FEATURE_IDS_LIST_LENGTH,
+							return_type="joined",
+							join_type="outer"):
 		"""
 			Takes one of multiple data formats (user specified, we're not inspecting it - options are
 			geopandas, geojson) and gets its
@@ -57,6 +58,15 @@ class Geodatabase(object):
 		:param params:
 		:param features:
 		:param endpoint: which features endpoint should it use?
+		:param return_type: How should we return the data? Options are "raw" to return just the JSON from OpenET,
+							"list" to return a list of dictionaries with the OpenET data, "pandas" to return a pandas
+							 data frame of the results, or "joined" to return the
+							data joined back to the input data. "joined" is the default.
+		:param join_type: When merging results back in, what type of join should we use? Defaults to "outer" so that
+						records are retained even if no results come back for them. This is also useful behavior when
+						we have multiple timeseries records, such as for monthly results, but it can duplicate input
+						records (not always desirable). To change the behavior, change this to any value supported
+						by pandas.merge or change the return_type so no join occurs.
 		:return:
 		"""
 
@@ -68,6 +78,12 @@ class Geodatabase(object):
 		if endpoint.startswith("timeseries/"):  # strip it off the front if they included it
 			endpoint.replace("timeseries/", "")
 
+		if output_field is None and return_type == "joined":
+			raise ValueError("Must specify value for output_field when return_type is 'joined'")
+
+		if return_type not in ("joined", "pandas", "list", "raw"):
+			raise ValueError("return_type must be one of ('joined', 'list', 'raw', 'pandas')")
+
 		if feature_type not in (FEATURE_TYPE_GEOPANDAS, FEATURE_TYPE_GEOJSON):
 			raise ValueError(f"Feature type must be in ({FEATURE_TYPE_GEOPANDAS}, {FEATURE_TYPE_GEOJSON}) to get geometries and retrieve ET. CHeck that the feature_type parameter is specified correctly")
 
@@ -75,7 +91,7 @@ class Geodatabase(object):
 			features = geopandas.GeoDataFrame.from_features(features)
 
 		features_wgs = features.to_crs(4326)
-		features_wgs.loc[:, "centroid_geom"] = features_wgs["geometry"].centroid
+		features_wgs.loc[:, "centroid_geom"] = features_wgs[geometry_field].centroid
 		def set_centroid(row):
 			"""
 				There's a better way to do this, but my Pandas-fu is failing me right now.
@@ -94,12 +110,16 @@ class Geodatabase(object):
 		# we'll probably also want to do some form of caching or saving the feature IDs to the geopandas dfs so that
 		# we don't have to go back and get it again if we already got it.
 
-		openet_feature_ids = self.get_feature_ids(features_wgs, field="centroid")
-		#temp_feature_outputs = tempfile.mktemp(suffix=".csv", prefix="openet_client")
-		#openet_feature_ids.to_csv(temp_feature_outputs)
+		# only get the feature IDs if they aren't already there to save time and
+		# avoid a column naming conflict if they run the same data through multiple times
+		if not "openet_feature_id" in list(features_wgs.columns):
+			openet_feature_ids = self.get_feature_ids(features_wgs, field="centroid")
+			#temp_feature_outputs = tempfile.mktemp(suffix=".csv", prefix="openet_client")
+			#openet_feature_ids.to_csv(temp_feature_outputs)
 
-		features_wgs = features_wgs.merge(openet_feature_ids, on="centroid")
-		feature_ids = openet_feature_ids["openet_feature_id"].tolist()
+			features_wgs = features_wgs.merge(openet_feature_ids, on="centroid")
+
+		feature_ids = features_wgs["openet_feature_id"].tolist()
 
 		df_length = len(feature_ids)
 		start = 0
@@ -116,7 +136,7 @@ class Geodatabase(object):
 				response = self.client.send_request(endpoint, method="post", disable_encoding=True, **params)
 			except RateLimitError as e:
 				# if it gets interrupted save the data we currently have to the exception then raise it up
-				raise RateLimitError(str(e) + ". The retrieved data is available as an attribute '.data' on this exception, but is incomplete.", data=self._process_results(results, output_field, params, features_wgs))
+				raise RateLimitError(str(e) + ". The retrieved data is available as an attribute '.data' on this exception, but is incomplete.", data=self._process_results(results, return_type, output_field, features_wgs, join_type))
 
 			if not response.status_code == 500:
 				results.extend(response.json())
@@ -138,16 +158,40 @@ class Geodatabase(object):
 			end += batch_size
 			end = min(end, df_length)  # we'll only check end because we won't enter the next iteration if start < df_length
 
-		return self._process_results(results, output_field, params, features_wgs)
+		return self._process_results(results, return_type, output_field, features_wgs, join_type)
 
-	def _process_results(self, results, output_field, params, features_wgs):
-		openet_output_field_name = "data_value" if "aggregation" not in params else params["aggregation"]
+	def _process_results(self, results, return_type, output_field, features_wgs, join_type):
+		if return_type == "raw":
+			return results
+	
+		# openet_output_field_name = "data_value" if "aggregation" not in params else params["aggregation"]
 
-		results_reformed = [{output_field: item[openet_output_field_name], "openet_feature_id": item["feature_unique_id"]}
-						for item in results]
+		# figure out which keys are there using the first result - there should only be one, but this lets us make sure we get anything
+		output_field_keys = list(set(results[0].keys()).intersection(set(["data_value", "sum", "mean", "min", "max", "median"])))
+
+		results_reformed = results
+		for item in results:
+			if output_field:
+				if len(output_field_keys) == 1:  # there should only be one
+					item[output_field] = item[output_field_keys[0]]
+					del item[output_field_keys[0]]
+				else:
+					for key in output_field_keys:
+						item[output_field + "_" + key] = item[key]
+						del item[key]
+			item["openet_feature_id"] = item["feature_unique_id"]
+			del item["feature_unique_id"]
+		# we had used a list comprehension, but we wanted to keep all the other keys in the dict. Preserving for now, but can remove later
+		#results_reformed = [{output_field: item[openet_output_field_name], "openet_feature_id": item["feature_unique_id", ]}
+		#				for item in results]
+		if return_type == "list":
+			return results_reformed
+
 		results_df = pandas.DataFrame(results_reformed)
+		if return_type == "pandas":
+			return results_df
 
-		final = features_wgs.merge(results_df, on="openet_feature_id", how="outer")
+		final = features_wgs.merge(results_df, on="openet_feature_id", how=join_type)
 		return final
 
 	def get_feature_ids(self, features, field=None, wait_time=RATE_LIMIT):

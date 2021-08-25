@@ -26,7 +26,6 @@ def test_simple_feature_retrieval(features=os.path.join(TEST_DATA, "vw_landiq.ge
 		},
 		features=df,
 		feature_type=openet_client.geodatabase.FEATURE_TYPE_GEOPANDAS,
-		id_field="UniqueID",
 		output_field="et_2018_ensemble_mean_mean"
 	)
 

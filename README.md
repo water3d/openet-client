@@ -106,7 +106,6 @@ result = client.geodatabase.get_et_for_features(params={
     },
     features=df,
     feature_type=openet_client.geodatabase.FEATURE_TYPE_GEOPANDAS,
-    id_field="UniqueID",
     output_field="et_2018_mean_ensemble_mean",
     endpoint="timeseries/features/stats/annual"
 )

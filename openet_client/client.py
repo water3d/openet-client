@@ -21,6 +21,7 @@ class OpenETClient(object):
         self.raster = RasterManager(client=self)
         self.geodatabase = Geodatabase(client=self)
         self.cache = Cacher()
+        self._last_request = None  # just for debugging
 
     def _check_token(self):
         if self.token is None:
@@ -63,6 +64,7 @@ class OpenETClient(object):
             send_kwargs = "&".join("%s=%s" % (k, v) for k, v in send_kwargs.items())
 
         result = requester(url, headers={"Authorization": self.token}, params=send_kwargs, **extra_kwargs)
+        self._last_request = result
 
         if result.status_code == 500 and "reached your maximum rate limit" in result.json()["description"]:
             raise RateLimitError("Server indicates we've reached our rate limit - try increasing the wait time between requests")

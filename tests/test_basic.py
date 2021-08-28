@@ -4,10 +4,20 @@ import os
 
 import openet_client
 
-raster_params = {
+raster_params_old_large = {
     'start_date': '2016-01-01',
     'end_date': '2016-03-20',
     'geometry': '-120.72612533471566,37.553211935016215,-120.72612533471566,37.474782294423676,-120.59703597924691,37.474782294423676,-120.59703597924691,37.553211935016215',
+    'filename_suffix': 'client_test',
+    'variable': 'et',
+    'model': 'ensemble',
+    'units': 'metric'
+}
+
+raster_params = {
+    'start_date': '2016-01-01',
+    'end_date': '2016-03-20',
+    'geometry': '-119.39062,36.19926,-119.35817,36.19926,-119.35817,36.16867,-119.39062,36.16867',
     'filename_suffix': 'client_test',
     'variable': 'et',
     'model': 'ensemble',

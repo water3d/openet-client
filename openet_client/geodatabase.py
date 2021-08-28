@@ -15,7 +15,7 @@ except ImportError:
 
 import pandas
 
-MAX_FEATURE_IDS_LIST_LENGTH = 50
+MAX_FEATURE_IDS_LIST_LENGTH = 40
 RATE_LIMIT = 5000  # ms
 
 FEATURE_TYPE_GEOPANDAS = "geopandas"
@@ -142,19 +142,21 @@ class Geodatabase(object):
 				results.extend(response.json())
 			else:
 				logging.warning(f"Error retrieving ET for one or more fields. Request sent was {response.url}. Got response {response.text}")
-				if batch_size != original_batch_size:  # if we're not already there, switch to slow batch mode so we go through it one by one now
+				if batch_size == original_batch_size:  # if we're not already there, switch to slow batch mode so we go through it one by one now
 					batch_size = 1
 					end = start + 1
 					continue  # go back through the last batch one by one so we make sure we get as many as possible
+				# if we are already in slow batch mode, then basically, this record gets skipped
 
 			time.sleep(wait_time / 1000)
+
+			start += batch_size
 
 			if batch_size != original_batch_size:  # if we're in slow batch mode
 				slow_batch_count += 1  # count how many we've done
 				if slow_batch_count == original_batch_size:  # until we get back to where we would have been in the first place
 					batch_size = original_batch_size  # then increase the batch size again to *try* to get a larger set for the next group
 
-			start += batch_size
 			end += batch_size
 			end = min(end, df_length)  # we'll only check end because we won't enter the next iteration if start < df_length
 

@@ -1,6 +1,7 @@
 import logging
 
 import requests
+import json
 
 logging.basicConfig()
 
@@ -63,7 +64,10 @@ class OpenETClient(object):
         if disable_encoding:  # the API doesn't always like certain things URL-encoded, so don't
             send_kwargs = "&".join("%s=%s" % (k, v) for k, v in send_kwargs.items())
 
-        result = requester(url, headers={"Authorization": self.token}, params=send_kwargs, **extra_kwargs)
+        if method == "post":
+            result = requester(url, headers={"Authorization": self.token}, data=json.dumps(send_kwargs), **extra_kwargs)
+        else:
+            result = requester(url, headers={"Authorization": self.token}, params=send_kwargs, **extra_kwargs)
         self._last_request = result
 
         if result.status_code == 500 and "reached your maximum rate limit" in result.json()["description"]:

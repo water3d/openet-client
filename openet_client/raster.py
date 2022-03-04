@@ -144,7 +144,7 @@ class RasterManager(object):
         # such as from OGR and GEOS objects in GeoDjango. If it has those abilities, then it attempts to reproject, get the coordinates, and then
         # stringifies them and removes parens, spaces, and the trailing comma.
 
-        result = self.client.send_request(endpoint, **params)
+        result = self.client.send_request(endpoint, method="post", **params)
 
         if result.status_code not in (200, 201, 301) or "ERROR" in result.json():
             raise BadRequestError(f"OpenET API returned status code {result.status_code} with reason {result.reason} and message {result.text}")

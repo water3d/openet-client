@@ -61,16 +61,21 @@ class OpenETClient(object):
         if self._validate_ssl != True:
             extra_kwargs['verify'] = False
 
-        if disable_encoding:  # the API doesn't always like certain things URL-encoded, so don't
+        if disable_encoding and method == "get":  # the API doesn't always like certain things URL-encoded, so don't
             send_kwargs = "&".join("%s=%s" % (k, v) for k, v in send_kwargs.items())
 
         if method == "post":
-            result = requester(url, headers={"Authorization": self.token}, data=json.dumps(send_kwargs), **extra_kwargs)
+            body = json.dumps(send_kwargs)
+            result = requester(url, headers={"Authorization": self.token}, data=body, **extra_kwargs)
         else:
-            result = requester(url, headers={"Authorization": self.token}, params=send_kwargs, **extra_kwargs)
+            body = send_kwargs
+            result = requester(url, headers={"Authorization": self.token}, params=body, **extra_kwargs)
         self._last_request = result
 
-        if result.status_code == 500 and "reached your maximum rate limit" in result.json()["description"]:
+        # cache the request and response so that if anything goes wrong, we've saved the data
+        self.cache.cache_request(url, body, result.status_code, result.json())
+
+        if result.status_code in (500, 404) and "reached your maximum rate limit" in result.json()["description"]:
             raise RateLimitError("Server indicates we've reached our rate limit - try increasing the wait time between requests")
 
         return result

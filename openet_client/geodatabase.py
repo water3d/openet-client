@@ -133,12 +133,12 @@ class Geodatabase(object):
 			params["field_ids"] = str(partial_list).replace(" ", "").replace("\'", '"')  # what's weird is we basically have to send this as a python list, so we need to stringify it first so requests doesn't process it
 
 			try:
-				response = self.client.send_request(endpoint, method="post", disable_encoding=True, **params)
+				response = self.client.send_request(endpoint, method="post", disable_encoding=False, **params)
 			except RateLimitError as e:
 				# if it gets interrupted save the data we currently have to the exception then raise it up
 				raise RateLimitError(str(e) + ". The retrieved data is available as an attribute '.data' on this exception, but is incomplete.", data=self._process_results(results, return_type, output_field, features_wgs, join_type))
 
-			if not response.status_code == 500:
+			if response.status_code not in (500, 422, 404):
 				results.extend(response.json())
 			else:
 				logging.warning(f"Error retrieving ET for one or more fields. Request sent was {response.url}. Got response {response.text}")
@@ -159,6 +159,8 @@ class Geodatabase(object):
 
 			end += batch_size
 			end = min(end, df_length)  # we'll only check end because we won't enter the next iteration if start < df_length
+
+		self.client.cache.save_shelf(results)  # save out the current data structure for results before proceeding and possibly breaking things
 
 		return self._process_results(results, return_type, output_field, features_wgs, join_type)
 

@@ -82,7 +82,7 @@ class Cacher(object):
 
 	def cache_request(self, url, body, response_code, response_json):
 		cursor = self.connection.cursor()
-		cursor.execute("INSERT INTO requests (url, body, response_code, response_body) VALUES (?, ?, ?, ?)", (url, body, response_code, response_json))
+		cursor.execute("INSERT INTO requests (url, body, response_code, response_body) VALUES (?, ?, ?, ?)", (url, body, str(response_code), response_json))
 		self.connection.commit()
 		cursor.close()
 
@@ -93,9 +93,9 @@ class Cacher(object):
 		:param data_structure:
 		:return:
 		"""
-		shelf_file = tempfile.mktemp(prefix="et_data", suffix="shelf")
+		shelf_file = tempfile.mktemp(prefix="et_data_", suffix=".shelf")
 		shelf = shelve.open(shelf_file)
-		shelf[datetime.datetime.utcnow()] = data_structure
+		shelf["data"] = data_structure
 		shelf.sync()
 		shelf.close()
 

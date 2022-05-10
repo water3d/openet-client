@@ -121,34 +121,55 @@ class Geodatabase(object):
 
 		feature_ids = features_wgs["openet_feature_id"].tolist()
 
+		results = self.get_et_for_openet_feature_list(feature_ids, endpoint, params, wait_time, batch_size)
+
+		self.client.cache.save_shelf(results)  # save out the current data structure for results before proceeding and possibly breaking things
+
+		return self._process_results(results, return_type, output_field, features_wgs, join_type)
+
+	def get_et_for_openet_feature_list(self, feature_ids, endpoint, params,
+										wait_time=RATE_LIMIT,
+										batch_size=MAX_FEATURE_IDS_LIST_LENGTH):
+		"""
+			Retrieve ET for a list of OpenET Feature IDs and return the raw JSON data. To handle retrieving for spatial
+			data you already have, use get_et_for_features instead.
+		:param feature_ids: a list of strings containing OpenET feature IDs
+		:param endpoint: The OpenET endpoint to run the request against. No default
+		:param params: The parameters as specified in the OpenET documentation (https://open-et.github.io)
+		:param wait_time: How long to wait between requests to avoid hitting a rate limit. Defaults to 5 seconds
+		:param batch_size: How large of batches should we use by default? Defaults to 40
+		:return: A list of dictionaries as returned from JSON by the OpenET API
+		"""
 		df_length = len(feature_ids)
 		start = 0
 		end = min(batch_size, df_length)
 		results = []
-
 		original_batch_size = batch_size
 		slow_batch_count = 0
 		while start < df_length:
-			partial_list = [feat for feat in feature_ids[start:end] if feat is not None]  # remove the null values and filter to the batch size
-			params["field_ids"] = str(partial_list).replace(" ", "").replace("\'", '"')  # what's weird is we basically have to send this as a python list, so we need to stringify it first so requests doesn't process it
+			partial_list = [feat for feat in feature_ids[start:end] if feat is not None]  # remo4ve the null values and filter to the batch size
+			if len(partial_list) > 0:  # if we don't have any feature IDs, skip the retrieval, but continue with the accounting
+				params["field_ids"] = str(partial_list).replace(" ", "").replace("\'", '"')  # what's weird is we basically have to send this as a python list, so we need to stringify it first so requests doesn't process it
 
-			try:
-				response = self.client.send_request(endpoint, method="post", disable_encoding=False, **params)
-			except RateLimitError as e:
-				# if it gets interrupted save the data we currently have to the exception then raise it up
-				raise RateLimitError(str(e) + ". The retrieved data is available as an attribute '.data' on this exception, but is incomplete.", data=self._process_results(results, return_type, output_field, features_wgs, join_type))
+				try:
+					response = self.client.send_request(endpoint, method="post", disable_encoding=False, **params)
+				except RateLimitError as e:
+					# if it gets interrupted save the data we currently have to the exception then raise it up
+					raise RateLimitError(
+						str(e) + ". The retrieved data is available as an attribute '.data' on this exception, but is incomplete.",
+						data=results)
 
-			if response.status_code not in (500, 422, 404):
-				results.extend(response.json())
-			else:
-				logging.warning(f"Error retrieving ET for one or more fields. Request sent was {response.url}. Got response {response.text}")
-				if batch_size == original_batch_size:  # if we're not already there, switch to slow batch mode so we go through it one by one now
-					batch_size = 1
-					end = start + 1
-					continue  # go back through the last batch one by one so we make sure we get as many as possible
+				if response.status_code not in (500, 422, 404):
+					results.extend(response.json())
+				else:
+					logging.warning(f"Error retrieving ET for one or more fields. Request sent was {response.url}. Got response {response.text}")
+					if batch_size == original_batch_size:  # if we're not already there, switch to slow batch mode so we go through it one by one now
+						batch_size = 1
+						end = start + 1
+						continue  # go back through the last batch one by one so we make sure we get as many as possible
 				# if we are already in slow batch mode, then basically, this record gets skipped
 
-			time.sleep(wait_time / 1000)
+				time.sleep(wait_time / 1000)
 
 			start += batch_size
 
@@ -159,10 +180,7 @@ class Geodatabase(object):
 
 			end += batch_size
 			end = min(end, df_length)  # we'll only check end because we won't enter the next iteration if start < df_length
-
-		self.client.cache.save_shelf(results)  # save out the current data structure for results before proceeding and possibly breaking things
-
-		return self._process_results(results, return_type, output_field, features_wgs, join_type)
+		return results
 
 	def _process_results(self, results, return_type, output_field, features_wgs, join_type):
 		if return_type == "raw":
@@ -227,6 +245,8 @@ class Geodatabase(object):
 				results_dict = results.json()
 				if "feature_unique_ids" in results_dict:
 					ids = results_dict["feature_unique_ids"]
+				elif "field_ids" in results_dict:  # I think this is just that it used to come back as "feature_unique_ids", and now it comes back as "field_ids", so let's support both for a bit.
+					ids = results_dict["field_ids"]
 				else:
 					logging.error(f"Unable to retrieve field ID. Server returned {results_dict}")
 					raise ValueError(f"Unable to retrieve field ID. Server returned {results_dict}")

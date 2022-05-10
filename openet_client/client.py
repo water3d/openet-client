@@ -73,7 +73,7 @@ class OpenETClient(object):
         self._last_request = result
 
         # cache the request and response so that if anything goes wrong, we've saved the data
-        self.cache.cache_request(url, body, result.status_code, result.json())
+        self.cache.cache_request(url, body, result.status_code, json.dumps(result.json()))
 
         if result.status_code in (500, 404) and "reached your maximum rate limit" in result.json()["description"]:
             raise RateLimitError("Server indicates we've reached our rate limit - try increasing the wait time between requests")

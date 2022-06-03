@@ -3,6 +3,7 @@
 A Python library for accessing OpenET data with support functions to enable quicker workflows.
 
 Contents:
+* [Documentation](#documentation)
 * [Examples](#examples)
     * [Raster API](#raster-api)
         * [Batching It](#batching-it)
@@ -12,8 +13,10 @@ Contents:
 * [Notes](#notes)
 * [Licensing](#licensing)
 
+## Documentation
+Full documentation is in development and can be found at https://openet-client.readthedocs.io
+
 ## Examples
-Full documentation forthcoming in the future.
 
 ### Raster API
 One common need is issuing a raster export command and then waiting to proceed until the

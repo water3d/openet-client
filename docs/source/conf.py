@@ -14,8 +14,6 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
-import openet_client
-
 # -- Project information -----------------------------------------------------
 
 project = 'OpenET Client'

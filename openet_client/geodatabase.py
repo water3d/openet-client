@@ -147,7 +147,7 @@ class Geodatabase(object):
 		original_batch_size = batch_size
 		slow_batch_count = 0
 		while start < df_length:
-			partial_list = [feat for feat in feature_ids[start:end] if feat is not None]  # remo4ve the null values and filter to the batch size
+			partial_list = [feat for feat in feature_ids[start:end] if feat is not None]  # remove the null values and filter to the batch size
 			if len(partial_list) > 0:  # if we don't have any feature IDs, skip the retrieval, but continue with the accounting
 				params["field_ids"] = str(partial_list).replace(" ", "").replace("\'", '"')  # what's weird is we basically have to send this as a python list, so we need to stringify it first so requests doesn't process it
 

@@ -20,7 +20,9 @@ class Cacher(object):
 			make_new = not self._check_cache_version()  # invert its logic since "check" would imply "make sure it's OK" so a result of True means it's fine
 
 		if make_new:
+			self.connection.close()
 			os.unlink(self.cache_db_path)  # make sure it doesn't exist before creating it -we might just have an out of date cache
+			self.connection = sqlite3.connect(str(self.cache_db_path))
 			self.create_tables()
 
 	def _check_cache_version(self):
@@ -82,7 +84,7 @@ class Cacher(object):
 
 	def cache_request(self, url, body, response_code, response_json):
 		cursor = self.connection.cursor()
-		cursor.execute("INSERT INTO requests (url, body, response_code, response_body) VALUES (?, ?, ?, ?)", (url, body, str(response_code), response_json))
+		cursor.execute("INSERT INTO requests (url, body, response_code, response_body) VALUES (?, ?, ?, ?)", (url, str(body), str(response_code), response_json))
 		self.connection.commit()
 		cursor.close()
 

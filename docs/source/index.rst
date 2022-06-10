@@ -19,6 +19,7 @@ Python OpenET Client Documentation
    getting_started.rst
    geodatabase_api.rst
    raster_api.rst
+   raster_timeseries.rst
    sending_own_requests.rst
    cache.rst
 

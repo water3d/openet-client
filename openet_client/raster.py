@@ -8,6 +8,7 @@ import logging
 import requests
 
 from .exceptions import BadRequestError, FileRetrievalError
+from .timeseries import RasterTimeSeries
 
 STATUS_NONE = 0
 STATUS_SUBMITTED = 1
@@ -21,7 +22,7 @@ STATUS_FAILED_CLIENT = 6
 class Raster(object):
     """
         Internal object for managing raster exports - tracks current status, the remote URL and the local file path once
-        it exists.
+        it exists. Users of this package shouldn't need to instantiate this object directly in most cases.
     """
     def __init__(self, request_result):
         self.status = STATUS_NONE
@@ -97,6 +98,7 @@ class RasterManager(object):
     def __init__(self, client):
         self.client = client
         self.registry = {}
+        self.timeseries = RasterTimeSeries(raster_manager=self)
 
     def export(self, params=None, synchronous=False, public=True, transform=False):
         """

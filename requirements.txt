@@ -1,3 +1,4 @@
 requests
 geopandas
 pytest
+arrow

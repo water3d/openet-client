@@ -18,7 +18,7 @@ if __name__ == "__main__":
         author=author,
         author_email="nsantos5@ucmerced.edu",
         url='https://github.com/water3d/openet/',
-        install_requires=["requests"],
+        install_requires=["requests", "arrow"],
         extras_requires={"spatial": ["geopandas"]},
         include_package_data=True,
     )

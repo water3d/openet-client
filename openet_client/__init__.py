@@ -4,5 +4,5 @@ from .timeseries import RasterTimeSeries
 from .geodatabase import Geodatabase
 from .exceptions import *
 
-__version__ = "2022.6.13"
+__version__ = "2022.9.7"
 __author__ = "nickrsan"

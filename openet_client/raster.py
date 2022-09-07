@@ -35,8 +35,8 @@ class Raster(object):
         self._set_values()
 
     def _set_values(self):
-        self.remote_url = self._request_result['bucket_url'][0]
-        if "Queued" in self._request_result['status']:
+        self.remote_url = self._request_result['destination'][0]
+        if self._request_result['state'] in ("READY", "UNSUBMITTED", "RUNNING"):
             self.status = STATUS_SUBMITTED
 
     def download_file(self, retry_interval=20, max_wait=600):
@@ -198,6 +198,11 @@ class RasterManager(object):
             Then updates the statuses on individual rasters and calls the download functions
             for the individual rasters and time some are ready to download, but won't exit until
             all rasters are available and have had at least one download attempt.
+
+            It is recommended to use this after queueing a batch of rasters for running so that they
+            may be exporting all at the same time before waiting - it will wait until all are exported
+            before returning flow control to the calling function. Running this after each raster export
+            will result in much longer runtimes (because exports will not run in parallel).
         :param uuid:
         :param max_time: Maximum time in seconds to wait for all rasters to complete - defaults to 86400 (a day)
         :return:

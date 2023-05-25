@@ -16,7 +16,7 @@ class OpenETClient(object):
     token = None
     _base_url = "https://openet.dri.edu/"
     _validate_ssl = False
-    force_raise_request_errors = False # raises errors for all request errors before sending data for processing. Default is False to let calling code receive and handle errors, but can be set to True here to catch all errors labeled HTTP 400 - 599 regardless of if we handle them
+    force_raise_request_errors = True # raises errors for all request errors before sending data for processing. Default is False to let calling code receive and handle errors, but can be set to True here to catch all errors labeled HTTP 400 - 599 regardless of if we handle them. Need to change how geodatabase code handles rate limiting before can change to True
 
     def __init__(self, token=None):
         self.token = token
@@ -35,19 +35,30 @@ class OpenETClient(object):
             return
 
         r = self._last_request
-        text = json.loads(r.text)
+        try:
+            text = r.json()
+        except json.decoder.JSONDecodeError:
+            text = r.text
+
+        if "description" in text:
+            description = text["description"]
+        else:
+            description = ""
 
         if r.status_code == 401 and "detail" in text and text["detail"] == "Invalid API token":
             raise AuthenticationError("The API reports that your token is invalid - it may have expired and you will need to get your token reiussed."
                                       " As of mid-2023, you do this by contacting OpenET staff via their API documentation contact form at"
                                       " https://openetdata.org/contact/")
 
-        if r.status_code in (500, 404) and "reached your maximum rate limit" in r.json()["description"]:
+        if r.status_code in (500, 404) and "reached your maximum rate limit" in description:
             raise RateLimitError("Server indicates we've reached our rate limit - try increasing the wait time between requests")
 
         if r.status_code >= 400 and r.status_code <= 599:
             if self.force_raise_request_errors:
                 raise BadRequestError(f"API Reported HTTP {r.status_code} and text information of {r.text}")
+            else:
+                print(f"Warning: Received an HTTP 400 or 500 status code from the API - proceeding in case we can handle it"
+                      f"but if you get a crash, the API API Reported HTTP {r.status_code} and text information of {text}")
 
     def send_request(self, endpoint, method="get", disable_encoding=False, **kwargs):
         """
@@ -93,9 +104,10 @@ class OpenETClient(object):
             result = requester(url, headers={"Authorization": self.token}, params=body, **extra_kwargs)
         self._last_request = result
 
+        self._check_status()
+
         # cache the request and response so that if anything goes wrong, we've saved the data
         self.cache.cache_request(url, body, result.status_code, json.dumps(result.json()))
 
-        self._check_status()
 
         return result

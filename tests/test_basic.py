@@ -47,9 +47,10 @@ raster_params_sample_tiny = {
 raster_params_sample_super_tiny = {
     'start_date': '2018-01-01',
     'end_date': '2018-12-31',
-    'geometry': '-121.53565,36.94787,-121.53565,36.946027,-121.533428,36.946027,-121.533428,36.94787',
+    'geometry': [-121.53565,36.94787,-121.53565,36.946027,-121.533428,36.946027,-121.533428,36.94787],
     'filename_suffix': 'vw_sample',
     'variable': 'et',
+    'pixel_aggregation': 'sum',
     'model': 'ensemble',
     'units': 'metric'
 }

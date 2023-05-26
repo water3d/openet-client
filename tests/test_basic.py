@@ -43,10 +43,21 @@ raster_params_sample_tiny = {
     'model': 'ensemble',
     'units': 'metric'
 }
+
+raster_params_sample_super_tiny = {
+    'start_date': '2018-01-01',
+    'end_date': '2018-12-31',
+    'geometry': '-121.53565,36.94787,-121.53565,36.946027,-121.533428,36.946027,-121.533428,36.94787',
+    'filename_suffix': 'vw_sample',
+    'variable': 'et',
+    'model': 'ensemble',
+    'units': 'metric'
+}
+
 def test_basic():
     client = openet_client.OpenETClient()
     client.token = os.environ["OPENET_TOKEN"]
-    client.raster.export(params=raster_params_sample_tiny, synchronous=True)
+    client.raster.export(params=raster_params_sample_super_tiny, synchronous=True)
     print(client.raster.downloaded_raster_paths)
 
 

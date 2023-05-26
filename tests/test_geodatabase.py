@@ -9,7 +9,8 @@ import openet_client
 import geopandas
 
 
-def test_simple_feature_retrieval(features=os.path.join(TEST_DATA, "vw_landiq.geojson")):
+# need to make this use a smaller subset of features before we enable it in CI
+def disable_test_simple_feature_retrieval(features=os.path.join(TEST_DATA, "vw_landiq.geojson")):
 	df = geopandas.read_file(features)
 	#df["centroid"]
 

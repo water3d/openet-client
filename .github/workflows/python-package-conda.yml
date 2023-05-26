@@ -22,7 +22,7 @@ jobs:
       run: |
         # would be good to use the following, but not yet
         # conda env update --file environment.yml --name base
-        conda install geopandas, requests, arrow
+        conda install geopandas requests arrow
     - name: Lint with flake8
       run: |
         conda install flake8

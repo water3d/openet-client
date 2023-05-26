@@ -5,6 +5,7 @@ on: [push]
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    environment: ci-testing
     strategy:
       max-parallel: 5
 

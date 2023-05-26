@@ -10,10 +10,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Set up Python 3.10
+    - name: Set up Python 3.9
       uses: actions/setup-python@v3
       with:
-        python-version: '3.10'
+        python-version: '3.9'
     - name: Add conda to system path
       run: |
         # $CONDA is an environment variable pointing to the root of the miniconda directory
@@ -22,7 +22,7 @@ jobs:
       run: |
         # would be good to use the following, but not yet
         # conda env update --file environment.yml --name base
-        conda install geopandas requests arrow
+        conda install --channel conda-forge geopandas requests arrow
     - name: Lint with flake8
       run: |
         conda install flake8

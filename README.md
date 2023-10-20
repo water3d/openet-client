@@ -13,6 +13,11 @@ Contents:
 * [Notes](#notes)
 * [Licensing](#licensing)
 
+## WARNING
+As of 10/20/2023, this client is designed to work with OpenET's version 1 API, which is out of commission.
+Their V2 public API launched this month. We are beginning work to update this client to support the
+changes to the API's behavior and will update this README with more information as we make progress.
+
 ## Documentation
 Full documentation is in development and can be found at https://openet-client.readthedocs.io
 

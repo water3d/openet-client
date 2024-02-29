@@ -18,6 +18,9 @@ As of 10/20/2023, this client is designed to work with OpenET's version 1 API, w
 Their V2 public API launched this month. We are beginning work to update this client to support the
 changes to the API's behavior and will update this README with more information as we make progress.
 
+## Other Clients for the OpenET API
+* [OpenET API Client for R](https://github.com/codeswitching/openet) - from Lauren Steely and Metropolitan Water District of Southern CA - updated for the new API version
+
 ## Documentation
 Full documentation is in development and can be found at https://openet-client.readthedocs.io
 
@@ -51,8 +54,7 @@ client = openet_client.OpenETClient("your_open_et_token_value_here")
 
 # note that the path matches OpenET's raster export endpoint
 client.raster.export(arguments, synchronous=True)  # synchronous says to wait for it to download before proceeding
-print(
-    client.raster.downloaded_raster_paths)  # get the paths to the downloaded rasters (will be a list, even for a single raster)
+print(client.raster.downloaded_raster_paths)  # get the paths to the downloaded rasters (will be a list, even for a single raster)
 ```
 
 #### Batching it
@@ -64,11 +66,16 @@ issue a call to `wait_for_rasters`
 import openet_client
 
 client = openet_client.OpenETClient("your_open_et_token_value_here")
-arguments1 = {}  # some set of arguments, similar to the first example
-arguments2 = {}  # same
+
+
+# Run the exports - this could also be a monthly loop (for example)
+arguments1 = {...}  # some set of arguments for the OpenET API, similar to the first example
 client.raster.export(arguments1)
+arguments2 = {...}  # another set of arguments
 client.raster.export(arguments2)
-client.raster.wait_for_rasters()  # this will keep running until all rasters are downloaded - it will wait up to a day by default, but that's configurable by providing a `max_time` argument in seconds
+
+# wait for all rasters we've exported to complete and be downloaded locally before proceeding - whether that's 1 or 1000
+client.raster.wait_for_rasters()  
 print(client.raster.downloaded_raster_paths)  # a list with all downloaded rasters
 # or
 rasters = client.raster.registry.values()  # get all the Raster objects including remote URLs and local paths
@@ -85,11 +92,13 @@ client = openet_client.OpenETClient("your_open_et_token_value_here")
 arguments = {}  # some set of arguments, similar to the first example
 my_raster = client.raster.export(arguments)
 
-# ... any other code you like here - the OpenET API will do its work and make the raster ready - or not, depending on your place in their queue ...
+# ... any other code you like here - the OpenET API will do its work and make the raster ready
+# - or not, depending on your place in their queue
 
-client.raster.check_statuses()  # check the API's all_files endpoint to see which rasters are ready
-if my_raster.status == openet_client.raster.STATUS_AVAILABLE  # check that the raster we want is now ready
-    client.raster.download_available_rasters()  # try to download the ones that are ready and not yet downloaded (from this session)
+client.raster.check_statuses()  # check the OpenET API to see which rasters are ready
+if my_raster.status == openet_client.raster.STATUS_AVAILABLE:  # check that the raster we want is now ready
+    # try to download the ones that are ready and not yet downloaded (from this session)
+    client.raster.download_available_rasters()
 ```
 
 ### Geodatabase API
@@ -99,8 +108,9 @@ import os
 import geopandas
 import openet_client
 
-features = "PATH TO YOUR SPATIAL DATA" # must be a format geopandas supports, which is most spatial data
-df = geopandas.read_file(features)
+# must be a format geopandas supports, which is most spatial data
+features = "PATH TO YOUR SPATIAL DATA" 
+spatial_df = geopandas.read_file(features)
 
 client = openet_client.OpenETClient()
 client.token = os.environ["OPENET_TOKEN"]
@@ -112,7 +122,7 @@ result = client.geodatabase.get_et_for_features(params={
         "start_date": 2018,
         "end_date": 2018
     },
-    features=df,
+    features=spatial_df,
     feature_type=openet_client.geodatabase.FEATURE_TYPE_GEOPANDAS,
     output_field="et_2018_mean_ensemble_mean",
     endpoint="timeseries/features/stats/annual"
